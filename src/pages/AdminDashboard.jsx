@@ -5,21 +5,21 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { toast } from 'react-toastify';
 import { deleteReport, moveReportToReturned } from '../config/firestore';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend as RechartsLegend, PieChart, Pie, Cell } from 'recharts';
 import ReportTable from '../components/ReportTable';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSignOutAlt } from '@fortawesome/free-solid-svg-icons';
+import { faSignOutAlt, faCheckCircle, faTrash, faCheckSquare } from '@fortawesome/free-solid-svg-icons';
 
 const AdminDashboard = () => {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [lostReports, setLostReports] = useState([]);
   const [returnedReports, setReturnedReports] = useState([]);
+  const [historyReports, setHistoryReports] = useState([]); // State untuk histori
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
 
-  // Proteksi rute untuk admin
   useEffect(() => {
     if (!user || !isAdmin) {
       toast.error('Akses hanya untuk admin', { position: 'top-center' });
@@ -27,7 +27,6 @@ const AdminDashboard = () => {
     }
   }, [user, isAdmin, navigate]);
 
-  // Realtime listeners untuk laporan
   useEffect(() => {
     const unsubscribeLost = onSnapshot(collection(db, 'lost_items'), (snapshot) => {
       const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -41,17 +40,21 @@ const AdminDashboard = () => {
       updateChartData(lostReports, reports);
     });
 
+    const unsubscribeHistory = onSnapshot(collection(db, 'history_items'), (snapshot) => {
+      const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHistoryReports(reports);
+    });
+
     setLoading(false);
 
     return () => {
       unsubscribeLost();
       unsubscribeReturned();
+      unsubscribeHistory();
     };
   }, []);
 
-  // Fungsi untuk memperbarui data grafik
   const updateChartData = (lost, returned) => {
-    // Grafik tren per bulan
     const monthlyData = {};
     [...lost, ...returned].forEach(report => {
       const date = new Date(report.tanggal?.seconds * 1000 || report.returnedAt?.seconds * 1000);
@@ -70,7 +73,6 @@ const AdminDashboard = () => {
     }));
     setChartData(chartData);
 
-    // Grafik distribusi kategori
     const categoryCounts = {};
     [...lost, ...returned].forEach(report => {
       const category = report.kategori || 'Tidak Diketahui';
@@ -120,7 +122,6 @@ const AdminDashboard = () => {
           </button>
         </div>
 
-        {/* Statistik */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h3 className="text-lg font-semibold text-gray-700">Total Laporan</h3>
@@ -136,7 +137,6 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Grafik */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h3 className="text-lg font-semibold text-gray-700 mb-4">Tren Laporan per Bulan</h3>
@@ -145,7 +145,7 @@ const AdminDashboard = () => {
               <XAxis dataKey="name" />
               <YAxis />
               <Tooltip />
-              <Legend />
+              <RechartsLegend />
               <Line type="monotone" dataKey="lost" stroke="#ef4444" name="Hilang" />
               <Line type="monotone" dataKey="returned" stroke="#10b981" name="Ditemukan" />
             </LineChart>
@@ -168,20 +168,85 @@ const AdminDashboard = () => {
                 ))}
               </Pie>
               <Tooltip />
-              <Legend />
+              <RechartsLegend />
             </PieChart>
           </div>
         </div>
 
-        {/* Tabel Laporan */}
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h3 className="text-lg font-semibold text-gray-700 mb-4">Daftar Laporan</h3>
+          <div className="flex space-x-6 mb-4 text-sm text-gray-600">
+            <div className="flex items-center">
+              <FontAwesomeIcon icon={faCheckCircle} className="text-green-600 mr-2" />
+              <span>Konfirmasi Ditemukan</span>
+            </div>
+            <div className="flex items-center">
+              <FontAwesomeIcon icon={faTrash} className="text-red-600 mr-2" />
+              <span>Hapus Laporan</span>
+            </div>
+            <div className="flex items-center">
+              <FontAwesomeIcon icon={faCheckSquare} className="text-blue-600 mr-2" />
+              <span>Checklist (Barang Diambil)</span>
+            </div>
+          </div>
           <ReportTable
             lostReports={lostReports}
             returnedReports={returnedReports}
             onDelete={deleteReport}
             onConfirm={moveReportToReturned}
           />
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-md mt-8">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4">Histori Laporan</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gambar</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Barang</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kategori</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Awal</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Diambil Pada</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {historyReports.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
+                      Belum ada histori laporan
+                    </td>
+                  </tr>
+                ) : (
+                  historyReports.map(report => (
+                    <tr key={report.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {report.foto ? (
+                          <img
+                            src={report.foto}
+                            alt={`${report.namaBarang || 'Barang'} foto`}
+                            className="h-16 w-16 object-cover rounded"
+                          />
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{report.namaBarang || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{report.kategori || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${report.type === 'lost' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                          {report.type === 'lost' ? 'Hilang' : 'Ditemukan'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {report.takenAt ? new Date(report.takenAt.seconds * 1000).toLocaleString() : '-'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
