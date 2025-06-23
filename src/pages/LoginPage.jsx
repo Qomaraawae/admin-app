@@ -25,13 +25,17 @@ const LoginPage = () => {
       toast.error('Email tidak valid', { position: 'top-center' });
       return;
     }
+    if (!password) {
+      toast.error('Kata sandi tidak boleh kosong', { position: 'top-center' });
+      return;
+    }
     try {
       setLoading(true);
       await login(trimmedEmail, password);
       toast.success('Login berhasil!', { position: 'top-center' });
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login error:', error.message);
       toast.error(error.message, { position: 'top-center' });
     } finally {
       setLoading(false);
@@ -60,7 +64,8 @@ const LoginPage = () => {
                 className="appearance-none block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
                 placeholder="Email address"
                 value={email}
-                onChange={(e) => setEmail(e.target.value.trim())}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
               />
             </div>
             <div className="relative">
@@ -77,6 +82,7 @@ const LoginPage = () => {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
               />
             </div>
           </div>
