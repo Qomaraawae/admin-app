@@ -15,10 +15,8 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Fungsi untuk memetakan kode error Firebase ke pesan ramah pengguna
   const getFirebaseErrorMessage = (errorCode) => {
     switch (errorCode) {
       case 'auth/invalid-email':
@@ -31,42 +29,34 @@ export const AuthProvider = ({ children }) => {
         return 'Kredensial tidak valid';
       case 'permission-denied':
         return 'Izin ditolak: Tidak dapat mengakses data pengguna';
+      case 'auth/network-request-failed':
+        return 'Koneksi jaringan gagal. Periksa internet Anda.';
       default:
         return 'Terjadi kesalahan: ' + errorCode;
     }
   };
 
-  // Fungsi login
   const login = async (email, password) => {
     try {
-      // Login dengan Firebase Authentication
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      console.log('User logged in:', user.uid);
+      console.log('User logged in:', user.uid, user.email);
 
-      // Ambil data pengguna dari Firestore
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       console.log('User doc exists:', userDoc.exists(), 'Data:', userDoc.data());
 
-      // Jika dokumen tidak ada, buat dokumen baru
       if (!userDoc.exists()) {
         await setDoc(userDocRef, {
           email: user.email,
-          role: 'user', // Default role, ubah ke 'admin' jika perlu
+          role: 'user',
           createdAt: new Date(),
         });
         console.log('Created new user document for:', user.uid);
-        throw new Error('Akun baru dibuat, tetapi bukan admin');
       }
 
-      // Periksa role dari Firestore
-      const userData = userDoc.data();
-      if (userData.role !== 'admin') {
-        await signOut(auth);
-        throw new Error('Akses hanya untuk admin');
-      }
-
+      const userData = (await getDoc(userDocRef)).data();
+      setUser({ ...user, ...userData });
       return user;
     } catch (error) {
       console.error('Login error details:', error.code, error.message);
@@ -74,60 +64,49 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Fungsi logout
   const logout = async () => {
     try {
       await signOut(auth);
       setUser(null);
-      setIsAdmin(false);
     } catch (error) {
       console.error('Logout error:', error);
       throw new Error('Gagal logout: ' + error.message);
     }
   };
 
-  // Pantau status autentikasi
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // Ambil data pengguna dari Firestore
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
           console.log('Auth state - User doc exists:', userDoc.exists(), 'Data:', userDoc.data());
 
           if (userDoc.exists()) {
-            const userData = userDoc.data();
             setUser({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
-              ...userData,
+              ...userDoc.data(),
             });
-            setIsAdmin(userData.role === 'admin');
           } else {
-            // Jika dokumen tidak ada, buat dokumen baru
             await setDoc(userDocRef, {
               email: firebaseUser.email,
-              role: 'user', // Default role, ubah ke 'admin' jika perlu
+              role: 'user',
               createdAt: new Date(),
             });
-            console.log('Created new user document in auth state for:', firebaseUser.uid);
             setUser({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               role: 'user',
               createdAt: new Date(),
             });
-            setIsAdmin(false);
           }
         } catch (error) {
           console.error('Error fetching user data:', error.code, error.message);
           setUser(null);
-          setIsAdmin(false);
         }
       } else {
         setUser(null);
-        setIsAdmin(false);
       }
       setLoading(false);
     });
@@ -137,7 +116,6 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
-    isAdmin,
     login,
     logout,
     loading,
