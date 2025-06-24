@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import {
   collection,
   addDoc,
@@ -13,6 +13,7 @@ export const saveLostItemReport = async (reportData) => {
   try {
     const docRef = await addDoc(collection(db, "lost_items"), {
       ...reportData,
+      userId: auth.currentUser?.uid, // Tambahkan userId untuk isOwner
       createdAt: serverTimestamp(),
     });
     console.log("Saved lost item report:", docRef.id);
@@ -24,12 +25,13 @@ export const saveLostItemReport = async (reportData) => {
 };
 
 // RETURNED ITEMS
-export const saveReturnedItemReport = async (reportData, adminUid) => {
+export const saveReturnedItemReport = async (reportData, adminUid = null) => {
   try {
     const docRef = await addDoc(collection(db, "returned_items"), {
       ...reportData,
+      userId: auth.currentUser?.uid, // Tambahkan userId untuk isOwner
       returnedAt: serverTimestamp(),
-      confirmedBy: adminUid, // Menyimpan UID admin yang mengonfirmasi
+      confirmedBy: adminUid || auth.currentUser?.uid || "anonymous", // Gunakan UID pengguna atau "anonymous"
     });
     console.log("Saved returned item report:", docRef.id);
     return docRef.id;
@@ -91,23 +93,23 @@ export const setupReportsListener = (collectionName, callback) => {
 };
 
 // MOVE REPORT FROM LOST TO RETURNED
-export const moveReportToReturned = async (report, adminUid) => {
+export const moveReportToReturned = async (report, adminUid = null) => {
   try {
+    const effectiveAdminUid = adminUid || auth.currentUser?.uid || "anonymous";
+
     // Persiapkan data untuk koleksi returned_items
     const returnedData = {
       ...report,
+      userId: auth.currentUser?.uid, // Tambahkan userId untuk isOwner
       returnedAt: serverTimestamp(),
-      confirmedBy: adminUid, // Menyimpan UID admin yang mengonfirmasi
+      confirmedBy: effectiveAdminUid,
     };
 
     // Hapus id dari object yang akan disimpan
     const { id, ...dataWithoutId } = returnedData;
 
     // Simpan ke koleksi returned_items
-    const docRef = await addDoc(
-      collection(db, "returned_items"),
-      dataWithoutId
-    );
+    const docRef = await addDoc(collection(db, "returned_items"), dataWithoutId);
     console.log("Moved report to returned_items:", docRef.id);
 
     // Hapus dari lost_items
